@@ -1,0 +1,111 @@
+-- We will be dealing with missing data as well as numeric, string, and timestamp data types to draw insights about the products in the online store. 
+-- Let's start by finding out how complete the data is.
+
+SELECT COUNT(*) AS total_rows, 
+    COUNT(i.description) AS count_description, 
+    COUNT(f.listing_price) AS count_listing_price, 
+    COUNT(t.last_visited) AS count_last_visited 
+FROM info AS i
+INNER JOIN finance AS f
+    ON i.product_id = f.product_id
+INNER JOIN traffic AS t
+    ON t.product_id = f.product_id;
+
+-- Nike Vs Adidas Pricing
+-- How do the price points of Nike and Adidas products differ?
+-- finding distribution of the listing_price and the count for each price, grouped by brand.
+
+SELECT brand,listing_price::integer,count(b.product_id)
+FROM brands b
+INNER JOIN finance f
+    ON b.product_id = f.product_id
+WHERE listing_price>0
+GROUP BY brand,listing_price
+ORDER BY listing_price desc;
+
+--Labelling price ranges to simplify the output
+--Finding total revenue and product count brand wise and categorising by price as 
+--Expensive, average or elite.
+
+
+SELECT b.brand, COUNT(f.*), SUM(f.revenue) as total_revenue,
+CASE WHEN f.listing_price < 42 THEN 'Budget'
+    WHEN f.listing_price >= 42 AND f.listing_price < 74 THEN 'Average'
+    WHEN f.listing_price >= 74 AND f.listing_price < 129 THEN 'Expensive'
+    ELSE 'Elite' END AS price_category
+FROM finance AS f
+INNER JOIN brands AS b 
+    ON f.product_id = b.product_id
+WHERE b.brand IS NOT NULL
+GROUP BY b.brand, price_category
+ORDER BY total_revenue DESC;
+
+-- Average Discount Provided by the brands.
+
+SELECT b.brand,avg(f.discount)*100.0 as average_discount
+FROM finance AS f
+INNER JOIN brands AS b 
+    ON f.product_id = b.product_id
+WHERE b.brand IS NOT NULL
+GROUP BY b.brand;
+
+--correlation check between reviews and revenue
+
+select corr(reviews.reviews,finance.revenue) as review_revenue_corr
+from reviews inner join finance
+on reviews.product_id = finance.product_id;
+
+--since the reviews and rating are highly correlated, finding if product description 
+--length affects the rating of the product.
+
+SELECT TRUNC(LENGTH(i.description), -2) AS description_length,
+    ROUND(AVG(r.rating::numeric), 2) AS average_rating
+FROM info AS i
+INNER JOIN reviews AS r 
+    ON i.product_id = r.product_id
+WHERE i.description IS NOT NULL
+GROUP BY description_length
+ORDER BY description_length;
+
+--Finding the number of reviews monthlies for each brand.
+
+select brand, extract(month from last_visited) as month,count(r.product_id) as num_reviews
+from traffic t 
+inner join reviews r on t.product_id = r.product_id
+inner join brands b on t.product_id = b.product_id
+where brand is not null and last_visited is not null
+group by 1,2
+order by 1,2;
+
+--Finding number of products in footwear and median revenue
+
+with footwear as (
+select description, revenue from
+info i inner join finance f on
+i.product_id = f.product_id
+where description is not null
+and description ilike '%shoe%'
+or description ilike '%trainer%'
+or description ilike '%foot%')
+select count(*) as num_footwear_products, percentile_disc(0.5) within group (order by revenue)
+as median_footwear_revenue from footwear;
+
+--Finding number of products in clothing and median revenue
+
+with footwear as (
+select description, revenue from
+info i inner join finance f on
+i.product_id = f.product_id
+where description is not null
+and description ilike '%shoe%'
+or description ilike '%trainer%'
+or description ilike '%foot%')
+select count(i.product_id) as num_clothing_products,percentile_disc(0.5) within group (order by revenue)
+as median_clothing_revenue
+from info i inner join finance f on
+i.product_id = f.product_id
+where i.description not in (select description from footwear);
+
+
+
+
